@@ -69,7 +69,7 @@ Ví dụ chèn đúng dạng HTML:
 
 Yêu cầu:
 1. Viết đúng định dạng markdown:
-    - H1: # Tiêu đề bài viết
+    - H1: # Tiêu đề bài viết và Hãy đặt tiêu đề theo H1 là Nhận Định Bóng Đá: Đội A vs Đội B ngày 25/12/2025
     - H2: ## Tiêu đề phụ
     - H3: ### Mục nhỏ
     - Đoạn bôi đậm dùng **text** chuẩn markdown.
