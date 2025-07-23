@@ -191,7 +191,7 @@ async def process_excel(file_path, update, context):
                 )
                 await context.bot.send_message(
                     chat_id,
-                    f"🎉✅ Đăng bài thành công cho <b>{h1_title}</b> lên <b>{website}</b>!\n🆔 Post ID: <code>{post_id}</code> 🦄",
+                    f"🎉✅ Đăng bài thành công cho <b>{h1_title}</b> lên <b>{website}</b>!\n🆔 Post ID: <b>{post_id}</b> 🦄",
                     parse_mode="HTML"
                 )
 
