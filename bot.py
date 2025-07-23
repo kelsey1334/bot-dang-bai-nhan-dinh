@@ -168,7 +168,7 @@ async def process_excel(file_path, update, context):
                         parse_mode="HTML"
                     )
                     if len(h2s_list) >= 2:
-                        img2_text = h2s_list[1]
+                        img2_text = h2s_list[0]
                         img2_name = f"tmp/{slugify(img2_text)}.jpg"
                         compose_image(logo_bg, img2_text, img2_name)
                     if len(h2s_list) >= 1:
