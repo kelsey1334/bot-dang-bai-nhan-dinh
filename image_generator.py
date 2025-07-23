@@ -4,6 +4,7 @@ from io import BytesIO
 import re
 import unicodedata
 import os
+import textwrap
 
 FONT_PATH = "assets/NotoSans-Regular.ttf"
 
