@@ -31,10 +31,11 @@ def extract_h1_and_remove(md):
 def extract_h2_list(md):
     return re.findall(r'^\s*##\s*(.+)$', md, re.MULTILINE)
 
-def paraphrase_caption(h2_text):
+def paraphrase_caption(h2_text, team_home, team_away):
     prompt = (
-        f'Viết lại tiêu đề "{h2_text}" thành một câu mô tả ngắn, dùng làm caption và alt ảnh nhận định bóng đá. '
-        'Chỉ trả về đúng một câu duy nhất, không giải thích, không đánh số, không in lại tiêu đề gốc.'
+        f'Bạn là AI chuyên gia bóng đá, viết caption ảnh cho bài nhận định trận "{team_home}" vs "{team_away}". '
+        f'Hãy viết lại tiêu đề "{h2_text}" thành một câu mô tả ngắn khoản 10 từ đến 15 từ (caption), '
+        f'làm rõ bối cảnh trận {team_home} đối đầu {team_away}, không lặp lại tiêu đề gốc, không liệt kê, chỉ trả về một câu duy nhất bằng tiếng Việt, không giải thích gì thêm.'
     )
     try:
         model = genai.GenerativeModel('gemini-2.5-flash')
@@ -47,14 +48,11 @@ def paraphrase_caption(h2_text):
         return h2_text
 
 def ensure_internal_link(content, anchor_text, anchor_url):
-    # Nếu đã có internal link với bôi đậm, giữ nguyên
     if f'<a href="{anchor_url}"><strong>{anchor_text}</strong></a>' in content \
         or f'<a href="{anchor_url}"><b>{anchor_text}</b></a>' in content:
         return content
-    # Thay anchor_text đầu tiên thành internal link có strong bôi đậm
     def replacer(match):
         return f'<a href="{anchor_url}"><strong>{anchor_text}</strong></a>'
-    # Không thay trong tag đã có link
     pattern = rf'(?<![">])({re.escape(anchor_text)})(?!<\/a>)'
     return re.sub(pattern, replacer, content, count=1)
 
