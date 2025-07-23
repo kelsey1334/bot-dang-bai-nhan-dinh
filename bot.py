@@ -1,6 +1,5 @@
 import logging
 import os
-import html as html_lib
 import re
 import traceback
 from telegram import Update
@@ -9,12 +8,11 @@ from dotenv import load_dotenv
 from excel_reader import read_excel
 from content_writer import generate_post, paraphrase_caption
 from image_generator import compose_image, slugify
-from wp_poster import post_to_wordpress, upload_image_to_wp, get_wp_client
+from wp_poster import post_to_wordpress, upload_image_to_wp
 from gemini_extract_team import extract_teams_from_url
 from bs4 import BeautifulSoup
 
 load_dotenv()
-
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 
 logging.basicConfig(level=logging.INFO)
@@ -187,13 +185,13 @@ async def process_excel(file_path, update, context):
                 img2_width, img2_height = 800, 450
                 img3_width, img3_height = 800, 450
 
-                client = get_wp_client(wp_url, wp_user, wp_pass)
+                # UPLOAD ẢNH = REST API
                 if img2_name:
-                    img2_info = upload_image_to_wp(client, img2_name, img2_text, img2_text, img2_text)
+                    img2_info = upload_image_to_wp(wp_url, wp_user, wp_pass, img2_name, img2_text, img2_text, img2_text)
                     img2_url = img2_info.get("url")
                     img2_id = img2_info.get("id")
                 if img3_name:
-                    img3_info = upload_image_to_wp(client, img3_name, img3_text, img3_text, img3_text)
+                    img3_info = upload_image_to_wp(wp_url, wp_user, wp_pass, img3_name, img3_text, img3_text, img3_text)
                     img3_url = img3_info.get("url")
                     img3_id = img3_info.get("id")
 
