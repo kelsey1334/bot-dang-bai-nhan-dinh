@@ -25,6 +25,7 @@ def download_image(url):
 
 def compose_image(bg_url, text, out_name, max_width_ratio=0.75, max_height_ratio=0.5):
     import requests
+    import textwrap
     from io import BytesIO
 
     # Tải background
