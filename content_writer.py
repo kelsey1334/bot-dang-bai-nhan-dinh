@@ -37,7 +37,7 @@ def paraphrase_caption(h2_text):
         'Chỉ trả về đúng một câu duy nhất, không giải thích, không đánh số, không in lại tiêu đề gốc.'
     )
     try:
-        model = genai.GenerativeModel('gemini-2.5-pro')
+        model = genai.GenerativeModel('gemini-2.5-flash')
         response = model.generate_content([prompt])
         text = response.text.strip()
         text = re.sub(r"^[-\d. ]+", "", text).strip()
