@@ -5,6 +5,7 @@ import traceback
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from dotenv import load_dotenv
+import pandas as pd
 from excel_reader import read_excel
 from content_writer import generate_post, paraphrase_caption
 from image_generator import compose_image, slugify
@@ -195,8 +196,9 @@ async def process_excel(file_path, update, context):
                     img3_url = img3_info.get("url")
                     img3_id = img3_info.get("id")
 
-                alt2 = caption2 = paraphrase_caption(img2_text) if img2_text else ""
-                alt3 = caption3 = paraphrase_caption(img3_text) if img3_text else ""
+                # Caption & alt sử dụng AI bám sát ngữ cảnh
+                alt2 = caption2 = paraphrase_caption(img2_text, team_home, team_away) if img2_text else ""
+                alt3 = caption3 = paraphrase_caption(img3_text, team_home, team_away) if img3_text else ""
 
                 img2_html = create_wp_figure_html(img2_url, alt2, caption2, img2_width, img2_height, img2_id) if img2_url else ""
                 img3_html = create_wp_figure_html(img3_url, alt3, caption3, img3_width, img3_height, img3_id) if img3_url else ""
