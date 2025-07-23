@@ -32,14 +32,20 @@ def extract_h2_list(md):
     return re.findall(r'^\s*##\s*(.+)$', md, re.MULTILINE)
 
 def paraphrase_caption(h2_text):
-    prompt = f"""Viết lại một câu mô tả ngắn (~15-20 từ) từ tiêu đề: "{h2_text}" để dùng làm caption và alt ảnh bài nhận định bóng đá. Không trùng lặp với tiêu đề gốc, giữ đúng ý, không nhắc đến 'H2' hay 'ảnh'. Viết bằng tiếng Việt."""
+    prompt = (
+        f'Viết lại tiêu đề "{h2_text}" thành một câu mô tả ngắn, dùng làm caption và alt ảnh nhận định bóng đá. '
+        'Chỉ trả về đúng một câu duy nhất, không giải thích, không đánh số, không in lại tiêu đề gốc.'
+    )
     try:
         model = genai.GenerativeModel('gemini-2.5-flash')
         response = model.generate_content([prompt])
-        return response.text.strip().replace('\n', ' ')
+        # Xử lý đầu ra: chỉ lấy câu đầu, bỏ gạch đầu dòng/số
+        text = response.text.strip()
+        text = re.sub(r"^[-\d. ]+", "", text).strip()
+        text = text.split('\n')[0].strip()
+        return text
     except Exception:
         return h2_text
-
 def generate_post(source_url, anchor_text, anchor_url):
     prompt = f"""Bạn là một chuyên gia viết nội dung nhận định và soi kèo dự đoán kết quả bóng đá chuẩn SEO. Viết một bài blog dài khoảng 700 đến 800 từ chuẩn SEO, hãy vào url {source_url} để lấy dữ liệu từ url này để viết bài, yêu cầu lấy đúng toàn bộ thông tin về phân tích kèo trong url để viết.
 Trong bài viết, hãy tự nhiên chèn một liên kết nội bộ (internal link) với anchor text: "{anchor_text}" và url là: {anchor_url} ở một vị trí phù hợp (không phải ở đầu hoặc cuối bài, không được lặp lại).
