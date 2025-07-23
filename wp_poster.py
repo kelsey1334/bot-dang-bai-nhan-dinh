@@ -12,7 +12,13 @@ def upload_featured_image(wp_url, username, password, img_path, alt_text):
     resp_json = resp.json()
     return resp_json['id']   # Trả về media ID
 
-def post_to_wordpress(url, username, password, html_content, category_id, title, featured_media_id=None):
+def get_media_url(wp_url, username, password, media_id):
+    api_url = wp_url.rstrip('/') + f"/wp-json/wp/v2/media/{media_id}"
+    resp = requests.get(api_url, auth=HTTPBasicAuth(username, password))
+    resp.raise_for_status()
+    return resp.json().get("source_url")
+
+def post_to_wordpress(url, username, password, title, html_content, category_id, featured_media_id=None):
     post = {
         "title": title,
         "content": html_content,
