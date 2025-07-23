@@ -42,7 +42,7 @@ def insert_figures_after_h2s(html_content, img2_html, img3_html, bot=None, chat_
         h2s = soup.find_all('h2')
         # Chèn img2 sau h2 thứ 2 (index 1)
         if len(h2s) >= 2 and img2_html:
-            h2s[1].insert_after(BeautifulSoup(img2_html, "lxml"))
+            h2s[0].insert_after(BeautifulSoup(img2_html, "lxml"))
         # Chèn img3 sau h2 cuối cùng (dù là cùng vị trí với img2 nếu chỉ có 2 H2)
         if h2s and img3_html:
             h2s[-1].insert_after(BeautifulSoup(img3_html, "lxml"))
