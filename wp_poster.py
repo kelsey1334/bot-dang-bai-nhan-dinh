@@ -1,38 +1,27 @@
 import requests
 import os
+from requests.auth import HTTPBasicAuth
 
-def upload_image_to_wp(wp_url, user, app_password, image_path, alt, caption, title):
-    """
-    Upload ảnh lên WordPress (REST API) và trả về dict {url, id, title, alt, caption}
-    """
-    api_url = wp_url.rstrip('/') + '/wp-json/wp/v2/media'
-    with open(image_path, 'rb') as img_file:
-        files = {'file': (os.path.basename(image_path), img_file, 'image/jpeg')}
-        data = {'alt_text': alt}
-        resp = requests.post(api_url, files=files, data=data, auth=(user, app_password))
+def upload_featured_image(wp_url, username, password, img_path, alt_text):
+    media_api = wp_url.rstrip('/') + "/wp-json/wp/v2/media"
+    with open(img_path, 'rb') as img_file:
+        files = {'file': (os.path.basename(img_path), img_file, 'image/jpeg')}
+        data = {'alt_text': alt_text}
+        resp = requests.post(media_api, files=files, data=data, auth=(username, password))
     resp.raise_for_status()
-    data = resp.json()
-    return {
-        "url": data.get("source_url"),
-        "id": data.get("id"),
+    resp_json = resp.json()
+    return resp_json['id']   # Trả về media ID
+
+def post_to_wordpress(url, username, password, html_content, category_id, title, featured_media_id=None):
+    post = {
         "title": title,
-        "alt": alt,
-        "caption": caption
+        "content": html_content,
+        "status": "publish",
+        "categories": [int(category_id)]
     }
-
-def post_to_wordpress(wp_url, user, app_password, title, content, cat_id, img_list):
-    """
-    Đăng bài viết lên WordPress, set thumbnail bằng ID ảnh thumbnail đã upload.
-    """
-    api_url = wp_url.rstrip('/') + '/wp-json/wp/v2/posts'
-    params = {
-        'title': title,
-        'content': content,
-        'status': 'publish',
-        'categories': [cat_id],
-    }
-    if img_list and img_list[0].get("id"):
-        params['featured_media'] = img_list[0]["id"]
-    resp = requests.post(api_url, json=params, auth=(user, app_password))
-    resp.raise_for_status()
-    return resp.json().get("id")
+    if featured_media_id:
+        post["featured_media"] = featured_media_id
+    api_url = url.rstrip('/') + "/wp-json/wp/v2/posts"
+    response = requests.post(api_url, auth=HTTPBasicAuth(username, password), json=post)
+    response.raise_for_status()
+    return response.json().get('link')
