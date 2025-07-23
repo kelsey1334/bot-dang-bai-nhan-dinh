@@ -65,7 +65,7 @@ Viết một bài blog dài khoảng 700 đến 800 từ chuẩn SEO, hãy vào 
 ⚠️ Trong bài viết, bạn phải **chèn một liên kết nội bộ (internal link) với dạng HTML, với anchor text: "{anchor_text}" và url: {anchor_url}** vào một vị trí phù hợp trong thân bài (không ở đầu hoặc cuối bài, không lặp lại). 
 
 Ví dụ chèn đúng dạng HTML:  
-<a href="{anchor_url}">{anchor_text}</a>
+<a href="{anchor_url}"><strong>{anchor_text}</strong></a>
 
 Yêu cầu:
 1. Viết đúng định dạng markdown:
