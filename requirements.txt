@@ -1,1 +1,12 @@
-
+python-telegram-bot==20.8
+pandas
+openpyxl
+requests
+beautifulsoup4
+pillow
+python-dotenv
+google-generativeai
+python-wordpress-xmlrpc
+markdown2
+html5lib
+lxml
