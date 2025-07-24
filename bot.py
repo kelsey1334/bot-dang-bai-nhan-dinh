@@ -9,24 +9,25 @@ import pandas as pd
 from excel_reader import read_excel
 from content_writer import generate_post, paraphrase_caption
 from image_generator import compose_image, slugify
-from wp_poster import upload_featured_image, get_media_url, post_to_wordpress
+from wp_poster import upload_featured_image, post_to_wordpress
 from gemini_extract_team import extract_teams_from_url
 from bs4 import BeautifulSoup
+import requests
+from requests.structures import CaseInsensitiveDict
 
 load_dotenv()
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
+SINBYTE_API_KEY = os.getenv('SINBYTE_API_KEY')
 
 logging.basicConfig(level=logging.INFO)
 
 def create_wp_figure_html(img_url, alt, caption, width=800, height=450, img_id=None):
-    img_class = f"size-full wp-image-{img_id}" if img_id else "size-full"
     figure_id = f'attachment_{img_id}' if img_id else ""
     cap_id = f'caption-attachment-{img_id}' if img_id else ""
-    height_attr = f' height="{height}"' if height else ""
     figcaption = f'<figcaption id="{cap_id}" class="wp-caption-text">{caption}</figcaption>' if caption else ""
     html_fig = (
         f'<figure id="{figure_id}" aria-describedby="{cap_id}" style="width: {width}px" class="wp-caption aligncenter">'
-        f'<img loading="lazy" decoding="async" class="{img_class}" src="{img_url}" alt="{alt}" width="{width}"{height_attr}>'
+        f'<img loading="lazy" decoding="async" src="{img_url}" alt="{alt}" width="{width}" height="{height}">'
         f'{figcaption}'
         f'</figure>'
     )
@@ -36,15 +37,11 @@ def remove_all_entities(raw_html):
     return re.sub(r'&[a-zA-Z0-9#]+;', '', raw_html)
 
 def insert_figures_after_h2s(html_content, img2_html, img3_html, bot=None, chat_id=None):
-    """
-    - Chèn ảnh 2 vào sau H2 đầu tiên
-    - Ảnh 3 vào sau H2 cuối cùng
-    """
     try:
         html_content = remove_all_entities(html_content)
         soup = BeautifulSoup(html_content, "lxml")
         h2s = soup.find_all('h2')
-        if len(h2s) >= 1 and img2_html:
+        if len(h2s) >= 2 and img2_html:
             h2s[0].insert_after(BeautifulSoup(img2_html, "lxml"))
         if h2s and img3_html:
             h2s[-1].insert_after(BeautifulSoup(img3_html, "lxml"))
@@ -60,6 +57,22 @@ def insert_figures_after_h2s(html_content, img2_html, img3_html, bot=None, chat_
             short_err = error_msg[:4000]
             bot.send_message(chat_id, f"❌ [DEBUG] Lỗi BeautifulSoup:\n<pre>{short_err}</pre>", parse_mode="HTML")
         return f"[ERROR] insert_figures_after_h2s: {e}"
+
+def push_index_sinbyte(api_key, post_links, job_name="Auto Index from Bot"):
+    url = "https://app.sinbyte.com/api/indexing/"
+    headers = CaseInsensitiveDict()
+    headers["Content-Type"] = "application/json"
+    data = {
+        "apikey": api_key,
+        "name": job_name,
+        "dripfeed": 1,
+        "urls": post_links
+    }
+    try:
+        resp = requests.post(url, headers=headers, json=data, timeout=10)
+        return resp.status_code, resp.text
+    except Exception as e:
+        return None, str(e)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🐣 Gửi file Excel chứa dữ liệu để đăng bài nhé~")
@@ -156,44 +169,104 @@ async def process_excel(file_path, update, context):
                     )
                     continue
 
-                # 1. Tạo ảnh
+                await context.bot.send_message(chat_id, "🖼️ Đang tạo ảnh thumbnail & 2 ảnh phụ... 🎨")
                 img1_name = f"tmp/{slugify(h1_title)}.jpg"
-                img2_text = h2s_list[0] if len(h2s_list) >= 1 else ""
-                img3_text = h2s_list[-1] if len(h2s_list) >= 1 else ""
-                img2_name = f"tmp/{slugify(img2_text)}.jpg" if img2_text else None
-                img3_name = f"tmp/{slugify(img3_text)}.jpg" if img3_text else None
+                img2_name, img3_name = None, None
+                img2_text, img3_text = "", ""
+                try:
+                    compose_image(logo_bg, h1_title, img1_name)
+                    await context.bot.send_message(
+                        chat_id,
+                        f"🌷 Đã tạo xong ảnh thumbnail: <code>{img1_name}</code> 🏆",
+                        parse_mode="HTML"
+                    )
+                    if len(h2s_list) >= 2:
+                        img2_text = h2s_list[0]
+                        img2_name = f"tmp/{slugify(img2_text)}.jpg"
+                        compose_image(logo_bg, img2_text, img2_name)
+                    if len(h2s_list) >= 1:
+                        img3_text = h2s_list[-1]
+                        img3_name = f"tmp/{slugify(img3_text)}.jpg"
+                        compose_image(logo_bg, img3_text, img3_name)
+                except Exception as e:
+                    await context.bot.send_message(
+                        chat_id,
+                        f"🧩 Lỗi tạo ảnh: <code>{e}</code>",
+                        parse_mode="HTML"
+                    )
+                    continue
 
-                compose_image(logo_bg, h1_title, img1_name)
-                if img2_name: compose_image(logo_bg, img2_text, img2_name)
-                if img3_name: compose_image(logo_bg, img3_text, img3_name)
+                img2_url, img3_url = None, None
+                img2_id, img3_id = None, None
+                img2_width, img2_height = 800, 450
+                img3_width, img3_height = 800, 450
 
-                # 2. Upload 3 ảnh lên WP
-                thumb_id = upload_featured_image(wp_url, wp_user, wp_pass, img1_name, h1_title)
-                img2_id = upload_featured_image(wp_url, wp_user, wp_pass, img2_name, img2_text) if img2_name else None
-                img3_id = upload_featured_image(wp_url, wp_user, wp_pass, img3_name, img3_text) if img3_name else None
+                # UPLOAD THUMBNAIL
+                try:
+                    thumb_id = upload_featured_image(wp_url, wp_user, wp_pass, img1_name, h1_title)
+                except Exception as e:
+                    await context.bot.send_message(
+                        chat_id,
+                        f"🧨 Lỗi upload thumbnail: <code>{e}</code>",
+                        parse_mode="HTML"
+                    )
+                    continue
 
-                img2_url = get_media_url(wp_url, wp_user, wp_pass, img2_id) if img2_id else ""
-                img3_url = get_media_url(wp_url, wp_user, wp_pass, img3_id) if img3_id else ""
+                # Chèn img2, img3 lên media (nếu muốn hiển thị chuẩn)
+                # Ở đây đơn giản hóa: chỉ lấy local URL, có thể upload lên WP như thumbnail nếu muốn đồng bộ
+                if img2_name:
+                    img2_url = f"/wp-content/uploads/{os.path.basename(img2_name)}"
+                if img3_name:
+                    img3_url = f"/wp-content/uploads/{os.path.basename(img3_name)}"
 
                 alt2 = caption2 = paraphrase_caption(img2_text, team_home, team_away) if img2_text else ""
                 alt3 = caption3 = paraphrase_caption(img3_text, team_home, team_away) if img3_text else ""
 
-                img2_html = create_wp_figure_html(img2_url, alt2, caption2, 800, 450, img2_id) if img2_url else ""
-                img3_html = create_wp_figure_html(img3_url, alt3, caption3, 800, 450, img3_id) if img3_url else ""
+                img2_html = create_wp_figure_html(img2_url, alt2, caption2, img2_width, img2_height, img2_id) if img2_url else ""
+                img3_html = create_wp_figure_html(img3_url, alt3, caption3, img3_width, img3_height, img3_id) if img3_url else ""
 
-                html_with_figures = insert_figures_after_h2s(post_content, img2_html, img3_html, context.bot, chat_id)
+                try:
+                    html_with_figures = insert_figures_after_h2s(
+                        post_content, img2_html, img3_html, context.bot, chat_id
+                    )
+                except Exception as e:
+                    await context.bot.send_message(
+                        chat_id,
+                        f"❌ [DEBUG] Lỗi chèn ảnh vào bài: <code>{e}</code>",
+                        parse_mode="HTML"
+                    )
+                    html_with_figures = post_content
 
-                # 3. Đăng bài lên WordPress với featured image
-                post_id = post_to_wordpress(
-                    wp_url, wp_user, wp_pass,
-                    h1_title, html_with_figures, cat_id,
-                    featured_media_id=thumb_id
-                )
-                await context.bot.send_message(
-                    chat_id,
-                    f"🎉✅ Đăng bài thành công cho <b>{h1_title}</b> lên <b>{website}</b>!\n🆔 Post ID: <b>{post_id}</b> 🦄",
-                    parse_mode="HTML"
-                )
+                await context.bot.send_message(chat_id, "🚀 Bắt đầu đăng bài lên WordPress... 📝")
+                try:
+                    post_link = post_to_wordpress(
+                        wp_url, wp_user, wp_pass, html_with_figures, cat_id, h1_title, featured_media_id=thumb_id
+                    )
+                    await context.bot.send_message(
+                        chat_id,
+                        f"🎉✅ Đăng bài thành công cho <b>{h1_title}</b> lên <b>{website}</b>!\n🔗 Link bài viết: {post_link} 🦄",
+                        parse_mode="HTML"
+                    )
+
+                    # ==== ÉP INDEX SINBYTE NGAY SAU KHI ĐĂNG BÀI ====
+                    if SINBYTE_API_KEY:
+                        status, resp_text = push_index_sinbyte(SINBYTE_API_KEY, [post_link], job_name=h1_title)
+                        if status == 200:
+                            await context.bot.send_message(
+                                chat_id, f"🚀 Đã ép index Sinbyte: <code>{post_link}</code>", parse_mode="HTML")
+                        else:
+                            await context.bot.send_message(
+                                chat_id, f"❌ Lỗi ép index Sinbyte: {status} - <code>{resp_text}</code>", parse_mode="HTML")
+                    else:
+                        await context.bot.send_message(chat_id, "⚠️ Chưa cấu hình SINBYTE_API_KEY trong .env nên không ép index Sinbyte.", parse_mode="HTML")
+
+                except Exception as e:
+                    await context.bot.send_message(
+                        chat_id,
+                        f"💣 Lỗi đăng bài lên WordPress: <code>{e}</code>",
+                        parse_mode="HTML"
+                    )
+                    continue
 
             except Exception as e:
                 err_msg = f"❌ Lỗi không xác định dòng {idx+2}: {e}\n{traceback.format_exc()}"
