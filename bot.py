@@ -3,6 +3,7 @@ import os
 import re
 import traceback
 import requests
+from datetime import datetime
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from dotenv import load_dotenv
@@ -58,17 +59,20 @@ def insert_figures_after_h2s(html_content, img2_html, img3_html, bot=None, chat_
             bot.send_message(chat_id, f"❌ [DEBUG] Lỗi BeautifulSoup:\n<pre>{short_err}</pre>", parse_mode="HTML")
         return f"[ERROR] insert_figures_after_h2s: {e}"
 
-def submit_index_sinbyte(api_key, post_urls, name="API Auto", dripfeed=1):
+def submit_index_sinbyte(api_key, post_urls, name=None, dripfeed=1):
     url = "https://app.sinbyte.com/api/indexing/"
     headers = {
-        "Authorization": '{"Content-Type": "application/json"}',
         "Content-Type": "application/json"
     }
+    # Gán name nếu chưa có, đúng định dạng Nordic {thời gian hiện tại}
+    if name is None:
+        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        name = f"Nordic {current_time}"
     data = {
         "apikey": api_key,
         "name": name,
         "dripfeed": dripfeed,
-        "urls": post_urls
+        "urls": post_urls if isinstance(post_urls, list) else [post_urls]
     }
     try:
         resp = requests.post(url, headers=headers, json=data, timeout=30)
