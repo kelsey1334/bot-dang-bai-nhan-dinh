@@ -6,8 +6,6 @@ import requests
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from dotenv import load_dotenv
-import pandas as pd
-from datetime import datetime
 from excel_reader import read_excel
 from content_writer import generate_post, paraphrase_caption
 from image_generator import compose_image, slugify
@@ -17,6 +15,7 @@ from bs4 import BeautifulSoup
 
 load_dotenv()
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
+SINBYTE_API_KEY = os.getenv('SINBYTE_API_KEY')  # <-- Đảm bảo bạn đã set biến này
 
 logging.basicConfig(level=logging.INFO)
 
@@ -38,10 +37,6 @@ def remove_all_entities(raw_html):
     return re.sub(r'&[a-zA-Z0-9#]+;', '', raw_html)
 
 def insert_figures_after_h2s(html_content, img2_html, img3_html, bot=None, chat_id=None):
-    """
-    - Chèn ảnh 2 vào sau H2 đầu tiên
-    - Ảnh 3 vào sau H2 cuối cùng
-    """
     try:
         html_content = remove_all_entities(html_content)
         soup = BeautifulSoup(html_content, "lxml")
@@ -63,24 +58,21 @@ def insert_figures_after_h2s(html_content, img2_html, img3_html, bot=None, chat_
             bot.send_message(chat_id, f"❌ [DEBUG] Lỗi BeautifulSoup:\n<pre>{short_err}</pre>", parse_mode="HTML")
         return f"[ERROR] insert_figures_after_h2s: {e}"
 
-def index_link_sinbyte(urls, apikey=SINBYTE_APIKEY, dripfeed=1, name=None):
-    api_url = "https://app.sinbyte.com/api/indexing/"
+def submit_index_sinbyte(api_key, post_urls, name="API Auto", dripfeed=1):
+    url = "https://app.sinbyte.com/api/indexing/"
     headers = {
+        "Authorization": '{"Content-Type": "application/json"}',
         "Content-Type": "application/json"
     }
-    # Lấy thời gian hiện tại dạng YYYY-MM-DD HH:MM:SS
-    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    if name is None:
-        name = f"Nordic {current_time}"
     data = {
-        "apikey": apikey,
+        "apikey": api_key,
         "name": name,
         "dripfeed": dripfeed,
-        "urls": urls if isinstance(urls, list) else [urls]
+        "urls": post_urls
     }
     try:
-        resp = requests.post(api_url, headers=headers, json=data, timeout=15)
-        return resp.status_code, resp.json() if resp.headers.get("Content-Type", "").startswith("application/json") else resp.text
+        resp = requests.post(url, headers=headers, json=data, timeout=30)
+        return resp.status_code, resp.text
     except Exception as e:
         return 0, str(e)
 
@@ -179,7 +171,6 @@ async def process_excel(file_path, update, context):
                     )
                     continue
 
-                # 1. Tạo ảnh
                 img1_name = f"tmp/{slugify(h1_title)}.jpg"
                 img2_text = h2s_list[0] if len(h2s_list) >= 1 else ""
                 img3_text = h2s_list[-1] if len(h2s_list) >= 1 else ""
@@ -190,13 +181,12 @@ async def process_excel(file_path, update, context):
                 if img2_name: compose_image(logo_bg, img2_text, img2_name)
                 if img3_name: compose_image(logo_bg, img3_text, img3_name)
 
-                # 2. Upload 3 ảnh lên WP
                 thumb_id = upload_featured_image(wp_url, wp_user, wp_pass, img1_name, h1_title)
                 img2_id = upload_featured_image(wp_url, wp_user, wp_pass, img2_name, img2_text) if img2_name else None
                 img3_id = upload_featured_image(wp_url, wp_user, wp_pass, img3_name, img3_text) if img3_name else None
 
-                img2_url = get_media_url(wp_url, wp_user, wp_pass, img2_id) if img2_id else ""
-                img3_url = get_media_url(wp_url, wp_user, wp_pass, img3_id) if img3_id else ""
+                img2_url = get_media_url(wp_url, img2_id, wp_user, wp_pass) if img2_id else ""
+                img3_url = get_media_url(wp_url, img3_id, wp_user, wp_pass) if img3_id else ""
 
                 alt2 = caption2 = paraphrase_caption(img2_text, team_home, team_away) if img2_text else ""
                 alt3 = caption3 = paraphrase_caption(img3_text, team_home, team_away) if img3_text else ""
@@ -206,29 +196,28 @@ async def process_excel(file_path, update, context):
 
                 html_with_figures = insert_figures_after_h2s(post_content, img2_html, img3_html, context.bot, chat_id)
 
-                # 3. Đăng bài lên WordPress với featured image
-                post_id = post_to_wordpress(
+                # Đăng bài lên WordPress với featured image
+                post_link = post_to_wordpress(
                     wp_url, wp_user, wp_pass,
-                    h1_title, html_with_figures, cat_id,
+                    html_with_figures, cat_id, h1_title,
                     featured_media_id=thumb_id
                 )
                 await context.bot.send_message(
                     chat_id,
-                    f"🎉✅ Đăng bài thành công cho <b>{h1_title}</b> lên <b>{website}</b>!\n🆔 Post ID: <b>{post_id}</b> 🦄",
+                    f"🎉✅ Đăng bài thành công cho <b>{h1_title}</b> lên <b>{website}</b>!\n🔗 Link bài viết: {post_link} 🦄",
                     parse_mode="HTML"
                 )
-                # --- Ép index với Sinbyte ---
-                    if post_id and post_id.startswith("http") and SINBYTE_APIKEY:
-                        status, resp = index_link_sinbyte([post_id])
-                        msg = f"🦾 Ép index Sinbyte: status {status}\n{resp}"
-                        await context.bot.send_message(chat_id, msg[:4000])
-                except Exception as e:
-                    await context.bot.send_message(
-                        chat_id,
-                        f"💣 Lỗi đăng bài lên WordPress: <code>{e}</code>",
-                        parse_mode="HTML"
-                )
-            continue
+
+                # ====== ÉP INDEX SINBYTE ==========
+                if SINBYTE_API_KEY and post_link:
+                    await context.bot.send_message(chat_id, f"⏳ Đang gửi ép index Sinbyte...")
+                    status, sinbyte_resp = submit_index_sinbyte(SINBYTE_API_KEY, [post_link])
+                    if status == 200:
+                        await context.bot.send_message(chat_id, f"✅ Đã ép index thành công qua Sinbyte!")
+                    else:
+                        await context.bot.send_message(chat_id, f"❌ Sinbyte index fail ({status}): {sinbyte_resp[:4000]}")
+                else:
+                    await context.bot.send_message(chat_id, f"⚠️ Không có SINBYTE_API_KEY hoặc không lấy được link bài!")
 
             except Exception as e:
                 err_msg = f"❌ Lỗi không xác định dòng {idx+2}: {e}\n{traceback.format_exc()}"
