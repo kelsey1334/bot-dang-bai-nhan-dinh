@@ -100,6 +100,8 @@ async def process_excel(file_path, update, context):
         accounts, keywords = read_excel(file_path)
         await context.bot.send_message(chat_id, "🍀 Đã đọc xong file Excel. Bắt đầu xử lý từng dòng key_word! 🚀")
 
+        website_links = dict()  # {website: [post_link, ...]}
+
         for idx, row in keywords.iterrows():
             try:
                 await context.bot.send_message(
@@ -215,21 +217,32 @@ async def process_excel(file_path, update, context):
                     parse_mode="HTML"
                 )
 
-                # ====== ÉP INDEX SINBYTE ==========
-                if SINBYTE_API_KEY and post_link:
-                    await context.bot.send_message(chat_id, f"⏳ Đang gửi ép index Sinbyte...")
-                    status, sinbyte_resp = submit_index_sinbyte(SINBYTE_API_KEY, [post_link])
-                    if status == 200:
-                        await context.bot.send_message(chat_id, f"✅ Đã ép index thành công qua Sinbyte!")
-                    else:
-                        await context.bot.send_message(chat_id, f"❌ Sinbyte index fail ({status}): {sinbyte_resp[:4000]}")
-                else:
-                    await context.bot.send_message(chat_id, f"⚠️ Không có SINBYTE_API_KEY hoặc không lấy được link bài!")
+                # Gom link theo website
+                website_links.setdefault(website, []).append(post_link)
 
             except Exception as e:
                 err_msg = f"❌ Lỗi không xác định dòng {idx+2}: {e}\n{traceback.format_exc()}"
                 await context.bot.send_message(chat_id, err_msg[:4000], parse_mode="HTML")
                 print(err_msg)
+
+        # ====== ÉP INDEX SINBYTE THEO WEBSITE ==========
+        if SINBYTE_API_KEY:
+            for web, links in website_links.items():
+                if links:
+                    await context.bot.send_message(chat_id, f"⏳ Đang gửi ép index {len(links)} link qua Sinbyte cho website <b>{web}</b> ...")
+                    status, sinbyte_resp = submit_index_sinbyte(SINBYTE_API_KEY, links, name=f"{web} {datetime.now():%Y-%m-%d %H:%M:%S}")
+                    if status == 200:
+                        await context.bot.send_message(chat_id, f"✅ Đã ép index thành công qua Sinbyte cho <b>{web}</b>!")
+                    else:
+                        await context.bot.send_message(chat_id, f"❌ Sinbyte index fail ({status}) cho <b>{web}</b>: {sinbyte_resp[:4000]}")
+        else:
+            await context.bot.send_message(chat_id, f"⚠️ Không có SINBYTE_API_KEY!")
+
+        await context.bot.send_message(chat_id, "✨ Đã xử lý xong toàn bộ file. Cảm ơn bạn! 🥰")
+    except Exception as e:
+        err_msg = f"❌ Lỗi tổng khi xử lý file: {e}\n{traceback.format_exc()}"
+        await context.bot.send_message(chat_id, err_msg[:4000], parse_mode="HTML")
+        print(err_msg)
 
         await context.bot.send_message(chat_id, "✨ Đã xử lý xong toàn bộ file. Cảm ơn bạn! 🥰")
     except Exception as e:
