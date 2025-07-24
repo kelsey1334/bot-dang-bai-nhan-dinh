@@ -1,6 +1,5 @@
 import requests
 import os
-from requests.auth import HTTPBasicAuth
 
 def upload_featured_image(wp_url, username, password, img_path, alt_text):
     media_api = wp_url.rstrip('/') + "/wp-json/wp/v2/media"
@@ -10,15 +9,11 @@ def upload_featured_image(wp_url, username, password, img_path, alt_text):
         resp = requests.post(media_api, files=files, data=data, auth=(username, password))
     resp.raise_for_status()
     resp_json = resp.json()
-    return resp_json['id']   # Trả về media ID
+    return resp_json['id'], resp_json['source_url']
 
-def get_media_url(wp_url, username, password, media_id):
-    api_url = wp_url.rstrip('/') + f"/wp-json/wp/v2/media/{media_id}"
-    resp = requests.get(api_url, auth=HTTPBasicAuth(username, password))
-    resp.raise_for_status()
-    return resp.json().get("source_url")
-
-def post_to_wordpress(url, username, password, title, html_content, category_id, featured_media_id=None):
+def post_to_wordpress(wp_url, username, password, html_content, category_id, title, featured_media_id=None):
+    import requests
+    from requests.auth import HTTPBasicAuth
     post = {
         "title": title,
         "content": html_content,
@@ -27,7 +22,7 @@ def post_to_wordpress(url, username, password, title, html_content, category_id,
     }
     if featured_media_id:
         post["featured_media"] = featured_media_id
-    api_url = url.rstrip('/') + "/wp-json/wp/v2/posts"
+    api_url = wp_url.rstrip('/') + "/wp-json/wp/v2/posts"
     response = requests.post(api_url, auth=HTTPBasicAuth(username, password), json=post)
     response.raise_for_status()
     return response.json().get('link')
