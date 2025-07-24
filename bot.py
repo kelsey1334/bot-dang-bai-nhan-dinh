@@ -59,7 +59,7 @@ def insert_figures_after_h2s(html_content, img2_html, img3_html, bot=None, chat_
             bot.send_message(chat_id, f"❌ [DEBUG] Lỗi BeautifulSoup:\n<pre>{short_err}</pre>", parse_mode="HTML")
         return f"[ERROR] insert_figures_after_h2s: {e}"
 
-def index_link_sinbyte(urls, apikey=SINBYTE_APIKEY, dripfeed=1, name='Auto Index'):
+def index_link_sinbyte(urls, apikey=SINBYTE_APIKEY, dripfeed=1, name='Nordic Soi Kèo'):
     api_url = "https://app.sinbyte.com/api/indexing/"
     headers = {
         "Content-Type": "application/json"
