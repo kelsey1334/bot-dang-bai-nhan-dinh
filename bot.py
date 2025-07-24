@@ -2,10 +2,12 @@ import logging
 import os
 import re
 import traceback
+import requests
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from dotenv import load_dotenv
 import pandas as pd
+from datetime import datetime
 from excel_reader import read_excel
 from content_writer import generate_post, paraphrase_caption
 from image_generator import compose_image, slugify
@@ -60,6 +62,27 @@ def insert_figures_after_h2s(html_content, img2_html, img3_html, bot=None, chat_
             short_err = error_msg[:4000]
             bot.send_message(chat_id, f"❌ [DEBUG] Lỗi BeautifulSoup:\n<pre>{short_err}</pre>", parse_mode="HTML")
         return f"[ERROR] insert_figures_after_h2s: {e}"
+
+def index_link_sinbyte(urls, apikey=SINBYTE_APIKEY, dripfeed=1, name=None):
+    api_url = "https://app.sinbyte.com/api/indexing/"
+    headers = {
+        "Content-Type": "application/json"
+    }
+    # Lấy thời gian hiện tại dạng YYYY-MM-DD HH:MM:SS
+    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    if name is None:
+        name = f"Nordic {current_time}"
+    data = {
+        "apikey": apikey,
+        "name": name,
+        "dripfeed": dripfeed,
+        "urls": urls if isinstance(urls, list) else [urls]
+    }
+    try:
+        resp = requests.post(api_url, headers=headers, json=data, timeout=15)
+        return resp.status_code, resp.json() if resp.headers.get("Content-Type", "").startswith("application/json") else resp.text
+    except Exception as e:
+        return 0, str(e)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🐣 Gửi file Excel chứa dữ liệu để đăng bài nhé~")
@@ -194,6 +217,18 @@ async def process_excel(file_path, update, context):
                     f"🎉✅ Đăng bài thành công cho <b>{h1_title}</b> lên <b>{website}</b>!\n🆔 Post ID: <b>{post_id}</b> 🦄",
                     parse_mode="HTML"
                 )
+                # --- Ép index với Sinbyte ---
+                    if post_id and post_id.startswith("http") and SINBYTE_APIKEY:
+                        status, resp = index_link_sinbyte([post_id])
+                        msg = f"🦾 Ép index Sinbyte: status {status}\n{resp}"
+                        await context.bot.send_message(chat_id, msg[:4000])
+                except Exception as e:
+                    await context.bot.send_message(
+                        chat_id,
+                        f"💣 Lỗi đăng bài lên WordPress: <code>{e}</code>",
+                        parse_mode="HTML"
+                )
+            continue
 
             except Exception as e:
                 err_msg = f"❌ Lỗi không xác định dòng {idx+2}: {e}\n{traceback.format_exc()}"
