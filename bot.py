@@ -16,7 +16,7 @@ from bs4 import BeautifulSoup
 
 load_dotenv()
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
-SINBYTE_API_KEY = os.getenv('SINBYTE_API_KEY')  # <-- Đảm bảo bạn đã set biến này
+SINBYTE_API_KEY = os.getenv('SINBYTE_API_KEY')
 
 logging.basicConfig(level=logging.INFO)
 
@@ -61,10 +61,7 @@ def insert_figures_after_h2s(html_content, img2_html, img3_html, bot=None, chat_
 
 def submit_index_sinbyte(api_key, post_urls, name=None, dripfeed=1):
     url = "https://app.sinbyte.com/api/indexing/"
-    headers = {
-        "Content-Type": "application/json"
-    }
-    # Gán name nếu chưa có, đúng định dạng Nordic {thời gian hiện tại}
+    headers = {"Content-Type": "application/json"}
     if name is None:
         current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         name = f"Nordic {current_time}"
@@ -117,23 +114,30 @@ async def process_excel(file_path, update, context):
                 anchor_text = row['anchor text']
                 anchor_url = row['url anchor text']
 
-                await context.bot.send_message(chat_id, "🔎 Đang dùng Gemini để xác định hai đội bóng...")
-                try:
-                    team_home, team_away = extract_teams_from_url(src_url)
+                # === Thử lấy tên 2 đội tối đa 3 lần ===
+                team_home, team_away = None, None
+                last_err = ""
+                for retry in range(3):
+                    try:
+                        team_home, team_away = extract_teams_from_url(src_url)
+                        if team_home and team_away:
+                            break
+                    except Exception as e:
+                        last_err = e
+                if not team_home or not team_away:
                     await context.bot.send_message(
                         chat_id,
-                        f"✅ Hai đội xác định: <b>{team_home}</b> vs <b>{team_away}</b>",
-                        parse_mode="HTML"
-                    )
-                except Exception as e:
-                    await context.bot.send_message(
-                        chat_id,
-                        f"😢 Lỗi dùng Gemini lấy tên hai đội: <code>{e}</code>",
+                        f"😢 Lỗi dùng Gemini lấy tên hai đội (thử 3 lần): <code>{last_err}</code>",
                         parse_mode="HTML"
                     )
                     continue
 
-                await context.bot.send_message(chat_id, "🔍 Đang tìm tài khoản website cần đăng... 🕵️‍♂️")
+                await context.bot.send_message(
+                    chat_id,
+                    f"✅ Hai đội xác định: <b>{team_home}</b> vs <b>{team_away}</b>",
+                    parse_mode="HTML"
+                )
+
                 acc_row = accounts[accounts['website'] == website]
                 if acc_row.empty:
                     await context.bot.send_message(
@@ -200,7 +204,6 @@ async def process_excel(file_path, update, context):
 
                 html_with_figures = insert_figures_after_h2s(post_content, img2_html, img3_html, context.bot, chat_id)
 
-                # Đăng bài lên WordPress với featured image
                 post_link = post_to_wordpress(
                     wp_url, wp_user, wp_pass,
                     html_with_figures, cat_id, h1_title,
