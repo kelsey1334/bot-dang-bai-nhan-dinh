@@ -2,6 +2,7 @@ import logging
 import os
 import re
 import traceback
+import requests
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from dotenv import load_dotenv
@@ -15,6 +16,7 @@ from bs4 import BeautifulSoup
 
 load_dotenv()
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
+SINBYTE_APIKEY = os.getenv('SINBYTE_APIKEY')
 
 logging.basicConfig(level=logging.INFO)
 
@@ -41,7 +43,7 @@ def insert_figures_after_h2s(html_content, img2_html, img3_html, bot=None, chat_
         # Chèn img2 sau h2 đầu tiên
         if len(h2s) >= 1 and img2_html:
             h2s[0].insert_after(BeautifulSoup(img2_html, "lxml"))
-        # Chèn img3 sau h2 cuối cùng (có thể trùng img2 nếu chỉ có 1 H2)
+        # Chèn img3 sau h2 cuối cùng
         if h2s and img3_html:
             h2s[-1].insert_after(BeautifulSoup(img3_html, "lxml"))
         if soup.body:
@@ -56,6 +58,23 @@ def insert_figures_after_h2s(html_content, img2_html, img3_html, bot=None, chat_
             short_err = error_msg[:4000]
             bot.send_message(chat_id, f"❌ [DEBUG] Lỗi BeautifulSoup:\n<pre>{short_err}</pre>", parse_mode="HTML")
         return f"[ERROR] insert_figures_after_h2s: {e}"
+
+def index_link_sinbyte(urls, apikey=SINBYTE_APIKEY, dripfeed=1, name='Auto Index'):
+    api_url = "https://app.sinbyte.com/api/indexing/"
+    headers = {
+        "Content-Type": "application/json"
+    }
+    data = {
+        "apikey": apikey,
+        "name": name,
+        "dripfeed": dripfeed,
+        "urls": urls if isinstance(urls, list) else [urls]
+    }
+    try:
+        resp = requests.post(api_url, headers=headers, json=data, timeout=15)
+        return resp.status_code, resp.json() if resp.headers.get("Content-Type", "").startswith("application/json") else resp.text
+    except Exception as e:
+        return 0, str(e)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🐣 Gửi file Excel chứa dữ liệu để đăng bài nhé~")
@@ -163,7 +182,7 @@ async def process_excel(file_path, update, context):
                         f"🌷 Đã tạo xong ảnh thumbnail: <code>{img1_name}</code> 🏆",
                         parse_mode="HTML"
                     )
-                    if len(h2s_list) >= 1:
+                    if len(h2s_list) >= 2:
                         img2_text = h2s_list[0]
                         img2_name = f"tmp/{slugify(img2_text)}.jpg"
                         compose_image(logo_bg, img2_text, img2_name)
@@ -179,9 +198,14 @@ async def process_excel(file_path, update, context):
                     )
                     continue
 
+                img2_url, img3_url = None, None
+                img2_id, img3_id = None, None
+                img2_width, img2_height = 800, 450
+                img3_width, img3_height = 800, 450
+
                 # UPLOAD THUMBNAIL
                 try:
-                    thumb_id, thumb_url = upload_featured_image(wp_url, wp_user, wp_pass, img1_name, h1_title)
+                    thumb_id = upload_featured_image(wp_url, wp_user, wp_pass, img1_name, h1_title)
                 except Exception as e:
                     await context.bot.send_message(
                         chat_id,
@@ -190,25 +214,26 @@ async def process_excel(file_path, update, context):
                     )
                     continue
 
-                # UPLOAD ảnh phụ (img2, img3) để lấy URL chèn vào nội dung
-                img2_id, img2_url = None, None
-                img3_id, img3_url = None, None
+                # UPLOAD ảnh phụ để lấy URL chèn vào nội dung
                 if img2_name:
                     try:
-                        img2_id, img2_url = upload_featured_image(wp_url, wp_user, wp_pass, img2_name, img2_text)
+                        img2_id = upload_featured_image(wp_url, wp_user, wp_pass, img2_name, img2_text)
+                        img2_url = get_media_url(wp_url, img2_id)
                     except Exception as e:
                         img2_url = None
+
                 if img3_name:
                     try:
-                        img3_id, img3_url = upload_featured_image(wp_url, wp_user, wp_pass, img3_name, img3_text)
+                        img3_id = upload_featured_image(wp_url, wp_user, wp_pass, img3_name, img3_text)
+                        img3_url = get_media_url(wp_url, img3_id)
                     except Exception as e:
                         img3_url = None
 
                 alt2 = caption2 = paraphrase_caption(img2_text, team_home, team_away) if img2_text else ""
                 alt3 = caption3 = paraphrase_caption(img3_text, team_home, team_away) if img3_text else ""
 
-                img2_html = create_wp_figure_html(img2_url, alt2, caption2, 800, 450, img2_id) if img2_url else ""
-                img3_html = create_wp_figure_html(img3_url, alt3, caption3, 800, 450, img3_id) if img3_url else ""
+                img2_html = create_wp_figure_html(img2_url, alt2, caption2, img2_width, img2_height, img2_id) if img2_url else ""
+                img3_html = create_wp_figure_html(img3_url, alt3, caption3, img3_width, img3_height, img3_id) if img3_url else ""
 
                 try:
                     html_with_figures = insert_figures_after_h2s(
@@ -232,6 +257,11 @@ async def process_excel(file_path, update, context):
                         f"🎉✅ Đăng bài thành công cho <b>{h1_title}</b> lên <b>{website}</b>!\n🔗 Link bài viết: {post_link} 🦄",
                         parse_mode="HTML"
                     )
+                    # --- Ép index với Sinbyte ---
+                    if post_link and post_link.startswith("http") and SINBYTE_APIKEY:
+                        status, resp = index_link_sinbyte([post_link])
+                        msg = f"🦾 Ép index Sinbyte: status {status}\n{resp}"
+                        await context.bot.send_message(chat_id, msg[:4000])
                 except Exception as e:
                     await context.bot.send_message(
                         chat_id,
