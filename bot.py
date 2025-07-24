@@ -181,11 +181,16 @@ async def process_excel(file_path, update, context):
                     )
                     continue
 
-                img1_name = f"tmp/{slugify(h1_title)}.jpg"
+                # ==== ĐẶT TÊN ẢNH ĐÚNG YÊU CẦU ====
+                img1_name = f"tmp/thumbnail-{slugify(h1_title)}.jpg"
                 img2_text = h2s_list[0] if len(h2s_list) >= 1 else ""
                 img3_text = h2s_list[-1] if len(h2s_list) >= 1 else ""
-                img2_name = f"tmp/{slugify(img2_text)}.jpg" if img2_text else None
-                img3_name = f"tmp/{slugify(img3_text)}.jpg" if img3_text else None
+
+                alt2 = caption2 = paraphrase_caption(img2_text, team_home, team_away) if img2_text else ""
+                alt3 = caption3 = paraphrase_caption(img3_text, team_home, team_away) if img3_text else ""
+
+                img2_name = f"tmp/{slugify(caption2)}.jpg" if caption2 else None
+                img3_name = f"tmp/{slugify(caption3)}.jpg" if caption3 else None
 
                 compose_image(logo_bg, h1_title, img1_name)
                 if img2_name: compose_image(logo_bg, img2_text, img2_name)
@@ -197,9 +202,6 @@ async def process_excel(file_path, update, context):
 
                 img2_url = get_media_url(wp_url, img2_id, wp_user, wp_pass) if img2_id else ""
                 img3_url = get_media_url(wp_url, img3_id, wp_user, wp_pass) if img3_id else ""
-
-                alt2 = caption2 = paraphrase_caption(img2_text, team_home, team_away) if img2_text else ""
-                alt3 = caption3 = paraphrase_caption(img3_text, team_home, team_away) if img3_text else ""
 
                 img2_html = create_wp_figure_html(img2_url, alt2, caption2, 800, 450, img2_id) if img2_url else ""
                 img3_html = create_wp_figure_html(img3_url, alt3, caption3, 800, 450, img3_id) if img3_url else ""
@@ -217,7 +219,6 @@ async def process_excel(file_path, update, context):
                     parse_mode="HTML"
                 )
 
-                # Gom link theo website
                 website_links.setdefault(website, []).append(post_link)
 
             except Exception as e:
@@ -237,12 +238,6 @@ async def process_excel(file_path, update, context):
                         await context.bot.send_message(chat_id, f"❌ Sinbyte index fail ({status}) cho <b>{web}</b>: {sinbyte_resp[:4000]}")
         else:
             await context.bot.send_message(chat_id, f"⚠️ Không có SINBYTE_API_KEY!")
-
-        await context.bot.send_message(chat_id, "✨ Đã xử lý xong toàn bộ file. Cảm ơn bạn! 🥰")
-    except Exception as e:
-        err_msg = f"❌ Lỗi tổng khi xử lý file: {e}\n{traceback.format_exc()}"
-        await context.bot.send_message(chat_id, err_msg[:4000], parse_mode="HTML")
-        print(err_msg)
 
         await context.bot.send_message(chat_id, "✨ Đã xử lý xong toàn bộ file. Cảm ơn bạn! 🥰")
     except Exception as e:
